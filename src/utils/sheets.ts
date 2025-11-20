@@ -4,19 +4,35 @@ import * as dotenv from "dotenv";
 dotenv.config();
 const spreadsheetId = process.env.SPREADSHEET_ID || "";
 
-const auth = new google.auth.GoogleAuth({
-    keyFile: "google-credentials.json",
+// --- CAMBIO IMPORTANTE: Lógica de autenticación híbrida ---
+let authConfig: any = {
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
-const sheets = google.sheets({ version: "v4", auth });
+};
 
-// 1. LEER TODO EL HISTORIAL (IDs + Detalles)
-// Devuelve un MAPA donde la clave es el ID de Telegram y el valor son los datos
+// 1. Si estamos en GitHub Actions (o existe la variable), usamos el JSON directo de la memoria
+if (process.env.GOOGLE_CREDENTIALS_JSON) {
+    try {
+        authConfig.credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+        console.log("🔐 Usando credenciales desde variable de entorno (Memoria).");
+    } catch (error) {
+        console.error("❌ Error parseando GOOGLE_CREDENTIALS_JSON:", error);
+    }
+}
+// 2. Si no, usamos el archivo físico (para tu desarrollo local)
+else {
+    authConfig.keyFile = "google-credentials.json";
+    console.log("📂 Usando credenciales desde archivo local (google-credentials.json).");
+}
+
+const auth = new google.auth.GoogleAuth(authConfig);
+const sheets = google.sheets({ version: "v4", auth });
+// ---------------------------------------------------------
+
 export async function obtenerHistorialCompleto(): Promise<Map<string, any>> {
     try {
         const response = await sheets.spreadsheets.values.get({
             spreadsheetId,
-            range: "Hoja 1!A:J", // Leemos desde la Columna A hasta la J (donde está el ID)
+            range: "Hoja 1!A:J",
         });
 
         const rows = response.data.values;
@@ -24,12 +40,8 @@ export async function obtenerHistorialCompleto(): Promise<Map<string, any>> {
 
         if (!rows || rows.length === 0) return historial;
 
-        // Recorremos las filas (saltando la cabecera si es necesario, pero el Map lo maneja)
         rows.forEach((row) => {
-            // Asumiendo que el ID de Telegram está en la columna J (índice 9)
-            // Columnas: 0:Fecha, 1:Hora, 2:Monto, 3:Moneda, ..., 5:App, ..., 9:ID
             const idTelegram = row[9];
-
             if (idTelegram) {
                 historial.set(idTelegram.toString(), {
                     fecha: row[0],
@@ -43,12 +55,11 @@ export async function obtenerHistorialCompleto(): Promise<Map<string, any>> {
 
         return historial;
     } catch (error) {
-        console.warn("⚠️ No se pudo leer el historial (quizás es la primera vez).");
+        console.warn("⚠️ No se pudo leer el historial (quizás es la primera vez o error de auth).", error);
         return new Map();
     }
 }
 
-// 2. Guardar nuevos registros (Igual que antes)
 export async function guardarEnGoogleSheets(nuevosRegistros: any[]) {
     if (nuevosRegistros.length === 0) return;
     console.log(`📊 Guardando ${nuevosRegistros.length} registros en Excel...`);

@@ -118,6 +118,11 @@ async function main() {
     console.log(`   📥 Nuevos guardados: ${resultadosFinales.length}`);
     console.log(`   ⏭️  Ignorados (duplicados): ${conteoIgnorados}`); // <--- SIEMPRE SE MOSTRARÁ
     console.log("--------------------------------------------------");
+
+    console.log("👋 Cerrando proceso...");
+
+    // Forzamos a Node.js a terminar con código de éxito (0)
+    process.exit(0);
 }
 
 main();

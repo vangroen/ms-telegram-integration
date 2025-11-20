@@ -17,8 +17,15 @@ const stringSession = new StringSession(process.env.TELEGRAM_SESSION || "");
 const targetChatId = process.env.TARGET_CHAT_ID ? BigInt(process.env.TARGET_CHAT_ID.replace(/['"]+/g, '')) : BigInt(0);
 const geminiApiKey = process.env.GEMINI_API_KEY || "";
 
-const TARGET_MONTH = 10;
-const TARGET_YEAR = 2025;
+//const TARGET_MONTH = 10;
+//const TARGET_YEAR = 2025;
+
+const today = new Date();
+// Retrocedemos al día 1 del mes anterior
+const targetDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+
+const TARGET_MONTH = targetDate.getMonth();
+const TARGET_YEAR = targetDate.getFullYear();
 
 async function analizarVoucherConGemini(imageBuffer: Buffer) {
     if (!geminiApiKey) return null;

@@ -1,0 +1,42 @@
+name: Lector de Vouchers Telegram
+
+on:
+  # Opción 1: Ejecutar manualmente desde la web de GitHub (botón "Run workflow")
+  workflow_dispatch:
+
+  # Opción 2: Ejecutar automáticamente (Cron)
+  schedule:
+    # Se ejecuta el día 28 de cada mes a las 12:00 UTC
+    - cron: '0 12 28 * *'
+
+jobs:
+  ejecutar-script:
+    runs-on: ubuntu-latest # Usamos Linux que es el más barato (1x minutos)
+
+    steps:
+      - name: 📥 Descargar código
+        uses: actions/checkout@v3
+
+      - name: 🟢 Instalar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 📦 Instalar librerías
+        run: npm install
+
+      - name: 🔐 Generar archivos de credenciales
+        # Aquí creamos los archivos físicos a partir de los secretos de GitHub
+        run: |
+          echo "${{ secrets.GOOGLE_CREDENTIALS_JSON }}" > google-credentials.json
+          # Creamos el .env al vuelo
+          echo "TELEGRAM_API_ID=${{ secrets.TELEGRAM_API_ID }}" >> .env
+          echo "TELEGRAM_API_HASH=${{ secrets.TELEGRAM_API_HASH }}" >> .env
+          echo "TELEGRAM_SESSION='${{ secrets.TELEGRAM_SESSION }}'" >> .env
+          echo "TARGET_CHAT_ID=${{ secrets.TARGET_CHAT_ID }}" >> .env
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "SPREADSHEET_ID=${{ secrets.SPREADSHEET_ID }}" >> .env
+
+      - name: 🚀 Ejecutar Bot
+        run: npx ts-node src/index.ts

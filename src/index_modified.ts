@@ -5,6 +5,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import input = require("input");
 import * as dotenv from "dotenv";
 
+// Asegúrate de que estos archivos existan y tengan la lógica nueva
 import { resolverFechaRelativa, normalizarHora } from "./utils/utils_modified";
 import { obtenerHistorialCompleto, guardarEnGoogleSheets } from "./utils/sheets_modified";
 
@@ -63,8 +64,11 @@ async function analizarVoucherConGemini(imageBuffer: Buffer) {
         {
             "monto": (número decimal. Ej: 26.00. Si falta, null),
             "moneda": (string, 'PEN' o 'USD' o 'S/'),
+            
             "fecha": (string, formato YYYY-MM-DD. PRIORIDADES: 1.Fecha explícita, 2."ayer"/"hoy", 3.Barra Estado Celular), 
-            "hora": (string, formato 24h "HH:MM". PRIORIDADES: 1.Hora explícita, 2.Barra Estado Celular), 
+            
+            "hora": (string. IMPORTANTE: Si la hora en la imagen tiene AM/PM, inclúyelo en tu respuesta (ej: "07:32 PM"). NO lo conviertas ni lo quites. Si está en 24h, déjalo así. Si dice "Ahora", busca en la Barra de Estado), 
+            
             "destinatario": (string. Nombre del comercio o persona),
             
             "app_origen": (string. JERARQUÍA ESTRICTA:
@@ -126,8 +130,9 @@ async function main() {
                 if (Buffer.isBuffer(buffer)) {
                     const datos = await analizarVoucherConGemini(buffer);
                     if (datos) {
+                        // Usamos las funciones de utils_modified.ts
                         datos.fecha = resolverFechaRelativa(datos.fecha, msgDate);
-                        datos.hora = normalizarHora(datos.hora);
+                        datos.hora = normalizarHora(datos.hora); // Aquí se aplicará la Regex para PM/AM
                         if (datos.moneda?.toLowerCase() === 's/') datos.moneda = 'PEN';
 
                         const registro = { ...datos, descripcion_telegram: descTelegram, id_mensaje: message.id };

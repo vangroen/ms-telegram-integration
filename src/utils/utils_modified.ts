@@ -1,4 +1,4 @@
-// src/utils/utils.ts
+// src/utils/utils_modified.ts
 
 // Convierte cualquier formato ("02:24 p. m.", "2:24PM", "07:32 PM") -> "19:32:00"
 export function normalizarHora(horaStr: string | null): string {
@@ -15,6 +15,7 @@ export function normalizarHora(horaStr: string | null): string {
 
     // 3. Extracción de Números (Horas y Minutos)
     // Usamos una regex que capture grupos: (digitos):(digitos)
+    // Esto ignora cualquier texto extra alrededor
     const matchTiempo = limpio.match(/(\d{1,2})[:.](\d{2})/);
 
     if (!matchTiempo) return horaStr; // Si no encuentra números, devuelve original
@@ -27,10 +28,8 @@ export function normalizarHora(horaStr: string | null): string {
         horas += 12; // 7 PM -> 19
     } else if (esAM && horas === 12) {
         horas = 0;   // 12 AM -> 00
-    } else if (!esPM && !esAM && horas === 12) {
-        // Caso raro: si no dice ni AM ni PM, pero es 12, asumimos mediodía (12)
-        // o si es formato 24h puro (ej: 14:00), no entra aquí.
     }
+    // Nota: Si no detecta ni PM ni AM, asume que ya es formato 24h o 12h mediodía
 
     // 5. Formateo Final (HH:MM:00)
     const hFinal = horas.toString().padStart(2, "0");

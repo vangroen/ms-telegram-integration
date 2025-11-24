@@ -5,9 +5,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import input = require("input");
 import * as dotenv from "dotenv";
 
-// Asegúrate de que estos archivos existan y tengan la lógica nueva
-import { resolverFechaRelativa, normalizarHora } from "./utils/utils_modified";
-import { obtenerHistorialCompleto, guardarEnGoogleSheets } from "./utils/sheets_modified";
+// Asegúrate de que tus archivos de utilidades estén bien importados
+import { resolverFechaRelativa, normalizarHora } from "./utils/utils";
+import { obtenerHistorialCompleto, guardarEnGoogleSheets } from "./utils/sheets";
 
 dotenv.config();
 
@@ -18,32 +18,30 @@ const stringSession = new StringSession(process.env.TELEGRAM_SESSION || "");
 const targetChatId = process.env.TARGET_CHAT_ID ? BigInt(process.env.TARGET_CHAT_ID.replace(/['"]+/g, '')) : BigInt(0);
 const geminiApiKey = process.env.GEMINI_API_KEY || "";
 
-// --- LÓGICA DE FECHA HÍBRIDA (Manual Local / Manual Nube / Automático) ---
+// --- LÓGICA DE FECHA HÍBRIDA ---
 let targetDate: Date;
 
-// 1. MODO MANUAL LOCAL (Argumentos de consola: npx ts-node src/index.ts 11 2025)
-const argMes = process.argv[2]; // El primer argumento después del nombre del archivo
-const argAnio = process.argv[3]; // El segundo argumento
+// 1. MODO MANUAL LOCAL
+const argMes = process.argv[2];
+const argAnio = process.argv[3];
 
 if (argMes && argAnio) {
     console.log(`💻 MODO MANUAL (Local): Recibido Mes ${argMes}, Año ${argAnio}`);
-    // Restamos 1 porque en JS Enero es 0
     const monthIndex = Number(argMes) - 1;
     const year = Number(argAnio);
     targetDate = new Date(year, monthIndex, 1);
 }
-// 2. MODO MANUAL NUBE (Variables de Entorno desde GitHub Actions Inputs)
+// 2. MODO MANUAL NUBE
 else if (process.env.MANUAL_MONTH && process.env.MANUAL_YEAR) {
     console.log(`☁️ MODO MANUAL (GitHub): Recibido Mes ${process.env.MANUAL_MONTH}, Año ${process.env.MANUAL_YEAR}`);
     const monthIndex = Number(process.env.MANUAL_MONTH) - 1;
     const year = Number(process.env.MANUAL_YEAR);
     targetDate = new Date(year, monthIndex, 1);
 }
-// 3. MODO AUTOMÁTICO (Batch / Cron)
+// 3. MODO AUTOMÁTICO
 else {
     console.log("🤖 MODO AUTOMÁTICO (Batch): Calculando mes anterior...");
     const today = new Date();
-    // Retrocedemos al día 1 del mes anterior (ej: Si hoy es 1 Dic, vamos al 1 Nov)
     targetDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
 }
 
@@ -56,7 +54,10 @@ console.log(`📅 PERIODO A ANALIZAR: MES ${TARGET_MONTH + 1} / AÑO ${TARGET_YE
 async function analizarVoucherConGemini(imageBuffer: Buffer) {
     if (!geminiApiKey) return null;
     const genAI = new GoogleGenerativeAI(geminiApiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
+    // USAMOS EL MODELO PRO ESTABLE (1.5 Pro)
+    // Este modelo tiene límites muy altos en cuentas pagas y es más inteligente que Flash.
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
     const prompt = `
         Actúa como un OCR financiero experto. Analiza la imagen.
@@ -67,7 +68,7 @@ async function analizarVoucherConGemini(imageBuffer: Buffer) {
             
             "fecha": (string, formato YYYY-MM-DD. PRIORIDADES: 1.Fecha explícita, 2."ayer"/"hoy", 3.Barra Estado Celular), 
             
-            "hora": (string. IMPORTANTE: Si la hora en la imagen tiene AM/PM, inclúyelo en tu respuesta (ej: "07:32 PM"). NO lo conviertas ni lo quites. Si está en 24h, déjalo así. Si dice "Ahora", busca en la Barra de Estado), 
+            "hora": (string. IMPORTANTE: Si la hora tiene AM/PM, inclúyelo (ej: "07:32 PM"). NO lo conviertas. Si está en 24h, déjalo así.), 
             
             "destinatario": (string. Nombre del comercio o persona),
             
@@ -91,7 +92,10 @@ async function analizarVoucherConGemini(imageBuffer: Buffer) {
         ]);
         const text = result.response.text();
         return JSON.parse(text.replace(/```json|```/g, "").trim());
-    } catch (e) { return null; }
+    } catch (e) {
+        console.error("❌ Error procesando imagen con Gemini:", e);
+        return null;
+    }
 }
 
 async function main() {
@@ -103,41 +107,49 @@ async function main() {
     const historialMap = await obtenerHistorialCompleto();
     console.log(`   -> Base de datos cargada con ${historialMap.size} registros.`);
 
-    const messages = await client.getMessages(targetChatId as any, { limit: 50 });
+    // LÍMITE AUMENTADO A 300 PARA CUENTAS PRO
+    const LIMITE_MENSAJES = 300;
+    console.log(`📥 Descargando últimos ${LIMITE_MENSAJES} mensajes...`);
+    const messages = await client.getMessages(targetChatId as any, { limit: LIMITE_MENSAJES });
 
-    console.log("\n--- PROCESANDO ---");
+    console.log("\n--- PROCESANDO A MÁXIMA VELOCIDAD 🚀 ---");
     const resultadosFinales = [];
     let conteoIgnorados = 0;
+
+    // Procesamos los mensajes en PARALELO (para ir aún más rápido)
+    // OJO: Si prefieres mantener el orden estricto, usa el 'for...of' normal.
+    // Aquí mantengo el 'for...of' para estabilidad, pero sin el 'sleep'.
 
     for (const message of messages) {
         const msgIdStr = message.id.toString();
 
         if (historialMap.has(msgIdStr)) {
-            const datoPrevio = historialMap.get(msgIdStr);
-            console.log(`⏩ Ignorado (Duplicado ID ${msgIdStr}): ${datoPrevio.app} - ${datoPrevio.moneda} ${datoPrevio.monto}`);
             conteoIgnorados++;
             continue;
         }
 
         const msgDate = new Date(message.date * 1000);
-        // Filtro de Mes y Año
+
         if (msgDate.getMonth() === TARGET_MONTH && msgDate.getFullYear() === TARGET_YEAR) {
             if (message.media && message.media.className === "MessageMediaPhoto") {
-                console.log(`\n📸 [${msgDate.toLocaleDateString()}] Nuevo mensaje detectado (ID: ${message.id})...`);
+                console.log(`\n📸 [${msgDate.toLocaleDateString()}] Nuevo mensaje (ID: ${message.id})...`);
                 const buffer = await client.downloadMedia(message, {});
                 const descTelegram = message.text || "";
 
                 if (Buffer.isBuffer(buffer)) {
+                    // SIN SLEEP: Ejecución directa
                     const datos = await analizarVoucherConGemini(buffer);
+
                     if (datos) {
-                        // Usamos las funciones de utils_modified.ts
                         datos.fecha = resolverFechaRelativa(datos.fecha, msgDate);
-                        datos.hora = normalizarHora(datos.hora); // Aquí se aplicará la Regex para PM/AM
+                        datos.hora = normalizarHora(datos.hora);
                         if (datos.moneda?.toLowerCase() === 's/') datos.moneda = 'PEN';
 
                         const registro = { ...datos, descripcion_telegram: descTelegram, id_mensaje: message.id };
                         console.log("   ✅ PROCESADO:", registro.app_origen, registro.monto);
                         resultadosFinales.push(registro);
+                    } else {
+                        console.log("   ⚠️ Gemini falló o devolvió null.");
                     }
                 }
             }

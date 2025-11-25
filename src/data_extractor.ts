@@ -48,7 +48,9 @@ async function analizarVoucherConGemini(imageBuffer: Buffer): Promise<any | null
 
     const genAI = new GoogleGenerativeAI(geminiApiKey);
     // Usamos 2.0 Flash por eficiencia
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    //const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    //const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
 
     const prompt = `
         Actúa como un OCR financiero experto. Analiza la imagen.

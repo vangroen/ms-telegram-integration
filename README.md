@@ -1,0 +1,1 @@
+npx ts-node src/cloud_extractor.ts 01 2026
